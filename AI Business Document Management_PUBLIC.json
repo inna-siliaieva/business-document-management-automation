@@ -1,0 +1,797 @@
+{
+  "name": "AI Business Document Management",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {
+          "q": "subject:DOC-AUTOMATION-TEST has:attachment"
+        }
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -336,
+        -32
+      ],
+      "id": "694e331c-6c7e-48be-830e-ffd4fbd43202",
+      "name": "Receive Incoming Business Documents"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "messageId": "={{ $json.id }}",
+        "simple": false,
+        "options": {
+          "downloadAttachments": true
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -112,
+        -80
+      ],
+      "id": "a099cbb2-447d-4efe-8547-2635ae60cadb",
+      "name": "Retrieve Email Attachments"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "attachment_0",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        112,
+        -16
+      ],
+      "id": "5eb63073-3d49-424f-b8a4-be859235fb82",
+      "name": "Extract Document Text"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are processing incoming business documents for a company.\n\nAnalyze the document text and classify the document.\n\nExtract the following information:\n\n- documentType\n- company\n- documentNumber\n- documentDate\n- project\n\nAllowed values for documentType:\n- Invoice\n- Contract\n- Quotation\n- Delivery Note\n- Construction Report\n- Unknown\n\nRules:\n- Use only information explicitly present in the document.\n- Do not invent or assume missing information.\n- If a field cannot be found, return null.\n- Use YYYY-MM-DD format for documentDate whenever possible.\n- If the document does not match one of the allowed document types, use \"Unknown\".\n\nDocument text:\n\n{{ $json.text }}",
+        "hasOutputParser": true,
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        336,
+        -32
+      ],
+      "id": "3518552f-2e23-4961-8693-ba0093480507",
+      "name": "Classify & Extract Document Data"
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"documentType\": {\n      \"type\": \"string\"\n    },\n    \"company\": {\n      \"type\": [\"string\", \"null\"]\n    },\n    \"documentNumber\": {\n      \"type\": [\"string\", \"null\"]\n    },\n    \"documentDate\": {\n      \"type\": [\"string\", \"null\"]\n    },\n    \"project\": {\n      \"type\": [\"string\", \"null\"]\n    }\n  },\n  \"required\": [\n    \"documentType\",\n    \"company\",\n    \"documentNumber\",\n    \"documentDate\",\n    \"project\"\n  ]\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        480,
+        176
+      ],
+      "id": "8de7ba99-b409-47af-b3dc-5ae5c3f12122",
+      "name": "Parse Structured Document Data"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        336,
+        176
+      ],
+      "id": "7591cebf-5ba1-40a2-aee3-9713934835c7",
+      "name": "Google Gemini Chat Model"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        624,
+        -144
+      ],
+      "id": "a7f04448-81c9-4828-bf69-c5dcad0fe0e0",
+      "name": "Merge Document & Classification Data"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f3665bd4-fe21-4d99-b279-359314e351e7",
+              "name": "standardizedFileName",
+              "value": "={{ $json.output.documentDate + '_' + $json.output.documentType.replace(/\\s+/g, '-') + '_' + $json.output.company.replace(/\\s+/g, '-') + '_' + $json.output.documentNumber + '.pdf' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        816,
+        -144
+      ],
+      "id": "46b602b3-62a7-4b5e-8f57-bd37604f2c9b",
+      "name": "Generate Standardized File Name"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.output.documentType }}",
+                    "rightValue": "Invoice",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "8f92bd96-5952-415c-a7ed-fc00f6cfff9b"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Invoice"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "1ef54aa4-9ff5-4012-86e3-ca85cd10f99b",
+                    "leftValue": "={{ $json.output.documentType }}",
+                    "rightValue": "Contract",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Contract"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "0d06ae31-872d-4461-b2e1-433c777c0bc7",
+                    "leftValue": "={{ $json.output.documentType }}",
+                    "rightValue": "Quotation",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Quotation"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "06b8739f-7ad9-4502-87ca-dad5bf78cc90",
+                    "leftValue": "={{ $json.output.documentType }}",
+                    "rightValue": "Delivery Note",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Delivery Note"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "1f5a3376-6a22-4dd3-adc9-ef2566a84d91",
+                    "leftValue": "={{ $json.output.documentType }}",
+                    "rightValue": "Construction Report",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Construction Report"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Needs Review"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1040,
+        -144
+      ],
+      "id": "798ae0bf-c33b-4a89-a958-215c212691a2",
+      "name": "Determine Storage Destination"
+    },
+    {
+      "parameters": {
+        "inputDataFieldName": "attachment_0",
+        "name": "={{ $json.standardizedFileName }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_INVOICES_FOLDER_ID",
+          "mode": "list",
+          "cachedResultName": " Invoices"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1152,
+        -352
+      ],
+      "id": "ab8c761a-5133-4532-9335-b1355a698037",
+      "name": "Upload Invoice to Google Drive"
+    },
+    {
+      "parameters": {
+        "inputDataFieldName": "attachment_0",
+        "name": "={{ $json.standardizedFileName }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_CONTRACTS_FOLDER_ID",
+          "mode": "list",
+          "cachedResultName": "Contracts"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1312,
+        -272
+      ],
+      "id": "26dd0c08-9081-430a-9633-277cb4d94646",
+      "name": "Upload Contract to Google Drive"
+    },
+    {
+      "parameters": {
+        "inputDataFieldName": "attachment_0",
+        "name": "={{ $json.standardizedFileName }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_QUOTATIONS_FOLDER_ID",
+          "mode": "list",
+          "cachedResultName": "Quotations"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1472,
+        -192
+      ],
+      "id": "33a4af28-86b4-4aa0-8692-c8e30933f877",
+      "name": "Upload Quotation to Google Drive"
+    },
+    {
+      "parameters": {
+        "inputDataFieldName": "attachment_0",
+        "name": "={{ $json.standardizedFileName }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_DELIVERY_NOTES_FOLDER_ID",
+          "mode": "list",
+          "cachedResultName": "Delivery Notes"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1600,
+        -64
+      ],
+      "id": "baeaf83e-1c6a-44fb-b6a2-9b621930b080",
+      "name": "Upload Delivery Note to Google Drive"
+    },
+    {
+      "parameters": {
+        "inputDataFieldName": "attachment_0",
+        "name": "={{ $json.standardizedFileName }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_CONSTRUCTION_REPORTS_FOLDER_ID",
+          "mode": "list",
+          "cachedResultName": "Construction Reports"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1456,
+        64
+      ],
+      "id": "fc86b7c4-a85a-449f-ac1f-bc95978f66e3",
+      "name": "Upload Construction Report to Google Drive"
+    },
+    {
+      "parameters": {
+        "inputDataFieldName": "attachment_0",
+        "name": "={{ $json.standardizedFileName }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_NEEDS_REVIEW_FOLDER_ID",
+          "mode": "list",
+          "cachedResultName": "Needs Review"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1296,
+        176
+      ],
+      "id": "f8789ae0-fc31-4110-8b50-513447eef245",
+      "name": "Upload Unclassified Document"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_DOCUMENT_REGISTER_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "AI Business Document Register"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Document Register"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Received Date": "={{ $('Retrieve Email Attachments').item.json.date.split('T')[0] }}",
+            "Document Type": "={{ $('Generate Standardized File Name').item.json.output.documentType }}",
+            "Company": "={{ $('Generate Standardized File Name').item.json.output.company }}",
+            "Document Number": "={{ $('Generate Standardized File Name').item.json.output.documentNumber }}",
+            "Document Date": "={{ $('Generate Standardized File Name').item.json.output.documentDate }}",
+            "Project": "={{ $('Generate Standardized File Name').item.json.output.project }}",
+            "File Name": "={{ $json.name }}",
+            "Drive File ID": "={{ $json.id }}",
+            "Drive Link": "={{ $json.webViewLink }}",
+            "Status": "={{ ['Invoice','Contract','Quotation','Delivery Note','Construction Report'].includes($('Generate Standardized File Name').item.json.output.documentType) ? 'Filed' : 'Needs Review' }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Received Date",
+              "displayName": "Received Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Document Type",
+              "displayName": "Document Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Document Number",
+              "displayName": "Document Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Document Date",
+              "displayName": "Document Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Project",
+              "displayName": "Project",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "File Name",
+              "displayName": "File Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Drive File ID",
+              "displayName": "Drive File ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Drive Link",
+              "displayName": "Drive Link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1984,
+        -144
+      ],
+      "id": "752a9817-154f-4608-ad86-d445c2bf425c",
+      "name": "Register Document"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Receive Incoming Business Documents": {
+      "main": [
+        [
+          {
+            "node": "Retrieve Email Attachments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retrieve Email Attachments": {
+      "main": [
+        [
+          {
+            "node": "Extract Document Text",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge Document & Classification Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Document Text": {
+      "main": [
+        [
+          {
+            "node": "Classify & Extract Document Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Structured Document Data": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Classify & Extract Document Data",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Classify & Extract Document Data",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify & Extract Document Data": {
+      "main": [
+        [
+          {
+            "node": "Merge Document & Classification Data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Document & Classification Data": {
+      "main": [
+        [
+          {
+            "node": "Generate Standardized File Name",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Standardized File Name": {
+      "main": [
+        [
+          {
+            "node": "Determine Storage Destination",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine Storage Destination": {
+      "main": [
+        [
+          {
+            "node": "Upload Invoice to Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upload Contract to Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upload Quotation to Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upload Delivery Note to Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upload Construction Report to Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upload Unclassified Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Invoice to Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Register Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Contract to Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Register Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Quotation to Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Register Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Delivery Note to Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Register Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Construction Report to Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Register Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Unclassified Document": {
+      "main": [
+        [
+          {
+            "node": "Register Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "tags": []
+}
